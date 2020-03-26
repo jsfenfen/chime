@@ -17,6 +17,21 @@ from .parameters import Parameters
 
 class SimSirModel:
 
+    def calculate_infected(self, p: Parameters) -> float:
+        """Calculated the estimated infected population.
+
+        This method by default will use the number of current hospitalized
+        patients, hospital market share, and the hospitalizatio rate to
+        derive the number of populations effected. Child class models
+        can oveerride this method in order to calculate this in a different way.
+        """
+        # Note: this should not be an integer.
+        # We're appoximating infected from what we do know.
+        # TODO market_share > 0, hosp_rate > 0
+        return (
+            p.current_hospitalized / p.market_share / p.hospitalized.rate
+        )
+
     def __init__(self, p: Parameters) -> SimSirModel:
         # TODO missing initial non-zero 'recovered' value
         recovered = 0.0
@@ -32,12 +47,7 @@ class SimSirModel:
             for key, d in p.dispositions.items()
         }
 
-        # Note: this should not be an integer.
-        # We're appoximating infected from what we do know.
-        # TODO market_share > 0, hosp_rate > 0
-        infected = (
-            p.current_hospitalized / p.market_share / p.hospitalized.rate
-        )
+        self.infected = infected = self.calculate_infected(p)
 
         susceptible = p.population - infected
 
@@ -96,6 +106,31 @@ class SimSirModel:
         self.census_df = census_df
         self.daily_growth = daily_growth_helper(p.doubling_time)
         self.daily_growth_t = daily_growth_helper(doubling_time_t)
+
+class RegionalSirModel(SimSirModel):
+    """SIR Model meant to be applied at a regional scale.
+
+    The SimSirModel takes a parameter "current_hospitalized" to compute the esimated
+    infected population. When computing SIR for a region, this data is difficult to
+    get and here instead we allow a user-supplied detection probability to be used instead.
+
+    Note: This requires that a "detection_probability" property is places on the parameters
+    argument. If none is supplied, it defaults to 14%. There is not a good way to add
+    custom parameters for different model types that would not include a more substantial
+    codebase change, so this is left as a TODO.
+    """
+
+    def calculate_infected(self, p: Parameters) -> float:
+        # TODO: A better way for subclassed models to have their own Parameter values.
+        if not hasattr(p, 'detection_probability') or p.detection_probability is None:
+            p.detection_probability = 0.14
+
+        return (
+            p.known_infected / p.detection_probability
+        )
+
+    def __init__(self, p: Parameters) -> RegionalSirModel:
+        super().__init__(p)
 
 
 def sir(
