@@ -17,14 +17,17 @@ from .parameters import Parameters
 
 class SimSirModel:
 
-    def __init__(self, p: Parameters) -> SimSirModel:
-
+    def calculate_infected(self, p: Parameters) -> float:
         # Note: this should not be an integer.
         # We're appoximating infected from what we do know.
         # TODO market_share > 0, hosp_rate > 0
-        self.infected = infected = (
+        return (
             p.current_hospitalized / p.market_share / p.hospitalized.rate
         )
+
+    def __init__(self, p: Parameters) -> SimSirModel:
+
+        self.infected = infected = self.calculate_infected(p)
 
         self.detection_probability = (
             p.known_infected / infected if infected > 1.0e-7 else None
@@ -87,6 +90,28 @@ class SimSirModel:
         self.dispositions_df = pd.DataFrame(self.dispositions)
         self.admits_df = admits_df = build_admits_df(p.n_days, self.dispositions)
         self.census_df = build_census_df(admits_df, lengths_of_stay)
+
+class RegionalSirModel(SimSirModel):
+    """SIR Model meant to be applied at a regional scale.
+
+    The SimSirModel takes a parameter "current_hospitalized" to compute the esimated
+    infected population. When computing SIR for a region, this data is difficult to
+    get and here instead we allow a user-supplied detection probability to be used instead.
+
+    Note: This requires that a "detection_probability" property is places on the parameters
+    argument. If none is supplied, it defaults to 14%.
+    """
+
+    def calculate_infected(self, p: Parameters) -> float:
+        if not hasattr(p, 'detection_probability') or p.detection_probability is None:
+            p.detection_probability = 0.14
+
+        return (
+            p.known_infected / p.detection_probability
+        )
+
+    def __init__(self, p: Parameters) -> RegionalSirModel:
+        super().__init__(p)
 
 
 def sir(
